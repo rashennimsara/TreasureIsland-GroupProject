@@ -12,6 +12,8 @@ public class LegoGroundBuilder : EditorWindow
 {
     [SerializeField] private GameObject tileModel;
     [SerializeField] private Material sandMaterial;
+    [SerializeField] private Material grassMaterial;
+    [SerializeField] private float beachWidth = 8f;
     [SerializeField] private GameObject[] surfaces = new GameObject[0];
     [SerializeField] private float tileSize = 4f;
     [SerializeField] private bool addRiver = false;
@@ -49,6 +51,10 @@ public class LegoGroundBuilder : EditorWindow
         EditorGUILayout.HelpBox("Supports sand cubes and round Cylinder islands with Mesh Colliders. Select your island, then click Use Selected Sand Objects. Use a flat LEGO plate model from Project. Turn Add River off for Cylinder islands.", MessageType.Info);
         tileModel = (GameObject)EditorGUILayout.ObjectField("LEGO Plate", tileModel, typeof(GameObject), false);
         sandMaterial = (Material)EditorGUILayout.ObjectField("Sand Material", sandMaterial, typeof(Material), false);
+        grassMaterial = (Material)EditorGUILayout.ObjectField("Green Ground Material", grassMaterial, typeof(Material), false);
+        if (GUILayout.Button("Create Green Material")) CreateGreenMaterial();
+        beachWidth = Mathf.Max(0f, EditorGUILayout.FloatField("Beach Width", beachWidth));
+        EditorGUILayout.LabelField("Green material fills the centre. Beach Width sets the sand strip at the sea edge in world units.", EditorStyles.wordWrappedLabel);
         tileSize = Mathf.Clamp(EditorGUILayout.FloatField("Tile Size", tileSize), 1f, 100f);
         addRiver = EditorGUILayout.Toggle("Add River", addRiver);
         if (addRiver)
@@ -271,11 +277,14 @@ public class LegoGroundBuilder : EditorWindow
                         collider.size = new Vector3(rendered.size.x / scaleX,
                             rendered.size.y / scaleY, rendered.size.z / scaleZ);
                     }
-                    if (sandMaterial != null)
+                    Material groundMaterial = grassMaterial != null
+                        && IsInlandTile(x, z, columns, rows, area, footprints[areaIndex])
+                        ? grassMaterial : sandMaterial;
+                    if (groundMaterial != null)
                         foreach (Renderer renderer in tile.GetComponentsInChildren<Renderer>(true))
                         {
                             Material[] materials = renderer.sharedMaterials;
-                            for (int i = 0; i < materials.Length; i++) materials[i] = sandMaterial;
+                            for (int i = 0; i < materials.Length; i++) materials[i] = groundMaterial;
                             renderer.sharedMaterials = materials;
                         }
                 }
@@ -302,6 +311,58 @@ public class LegoGroundBuilder : EditorWindow
         generatedRoot = null;
         EditorSceneManager.MarkSceneDirty(scene);
         status = "Generated tiles removed. Re-enable your source island's Mesh Renderer and ground collider if you hid them.";
+    }
+
+    private void CreateGreenMaterial()
+    {
+        bool urp = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
+        Shader shader = Shader.Find(urp ? "Universal Render Pipeline/Lit" : "Standard");
+        if (shader == null)
+        {
+            status = "Could not find a ground shader. Create a green material in Project and drag it into Green Ground Material.";
+            return;
+        }
+        Material material = new Material(shader);
+        Color green = new Color(0.22f, 0.50f, 0.12f, 1f);
+        if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", green);
+        if (material.HasProperty("_Color")) material.SetColor("_Color", green);
+        if (material.HasProperty("_Smoothness")) material.SetFloat("_Smoothness", 0.15f);
+        if (!AssetDatabase.IsValidFolder("Assets/Materials")) AssetDatabase.CreateFolder("Assets", "Materials");
+        string path = AssetDatabase.GenerateUniqueAssetPath("Assets/Materials/GreenGround.mat");
+        AssetDatabase.CreateAsset(material, path);
+        AssetDatabase.SaveAssets();
+        grassMaterial = material;
+        status = "Green material created and assigned. Click GENERATE LEGO GROUND to apply the green centre and sandy beach.";
+    }
+
+    private bool IsInlandTile(int x, int z, int columns, int rows, Bounds area, Vector2[] footprint)
+    {
+        float width = area.size.x / columns;
+        float depth = area.size.z / rows;
+        float left = area.min.x + x * width;
+        float bottom = area.min.z + z * depth;
+        // A whole plate must be inland. Plates crossing the beach boundary
+        // stay sandy, so the shoreline always has a continuous sand strip.
+        return ShoreDistance(new Vector2(left, bottom), area, footprint) >= beachWidth
+            && ShoreDistance(new Vector2(left + width, bottom), area, footprint) >= beachWidth
+            && ShoreDistance(new Vector2(left, bottom + depth), area, footprint) >= beachWidth
+            && ShoreDistance(new Vector2(left + width, bottom + depth), area, footprint) >= beachWidth;
+    }
+
+    private static float ShoreDistance(Vector2 point, Bounds area, Vector2[] footprint)
+    {
+        if (footprint == null)
+            return Mathf.Min(Mathf.Min(point.x - area.min.x, area.max.x - point.x),
+                Mathf.Min(point.y - area.min.z, area.max.z - point.y));
+        float distance = float.PositiveInfinity;
+        for (int i = 0; i < footprint.Length; i++)
+        {
+            Vector2 a = footprint[i];
+            Vector2 b = footprint[(i + 1) % footprint.Length];
+            float length = (b - a).magnitude;
+            if (length > 0.000001f) distance = Mathf.Min(distance, Cross(a, b, point) / length);
+        }
+        return distance;
     }
 
     private static bool IsCylinder(GameObject go)
