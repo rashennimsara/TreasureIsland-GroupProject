@@ -10823,7 +10823,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4a0552d8dd326c14db475db596cabe9e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseInput
-  speed: 5
+  speed: 2
 --- !u!95 &94438895
 Animator:
   serializedVersion: 7
