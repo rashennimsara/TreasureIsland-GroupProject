@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -8,6 +7,7 @@ public class TestPlayerMovement : MonoBehaviour
 {
     [Header("Movement")]
     public float moveSpeed = 5f;
+    public float turnSpeed = 10f;
     public float airControl = 0.6f;
     public Transform cameraTransform;
 
@@ -16,6 +16,9 @@ public class TestPlayerMovement : MonoBehaviour
     public float groundCheckDistance = 0.2f;
     public float coyoteTime = 0.12f;
     public float jumpBufferTime = 0.15f;
+
+    [Header("Animation")]
+    public Animator anim;
 
     private Rigidbody rb;
     private CapsuleCollider capsule;
@@ -29,6 +32,12 @@ public class TestPlayerMovement : MonoBehaviour
     {
         rb = GetComponent<Rigidbody>();
         capsule = GetComponent<CapsuleCollider>();
+
+        // Automatically finds the Animator on TestPlayer or any child object inside it
+        if (anim == null)
+        {
+            anim = GetComponentInChildren<Animator>();
+        }
 
         rb.useGravity = true;
         rb.isKinematic = false;
@@ -60,6 +69,28 @@ public class TestPlayerMovement : MonoBehaviour
         if (keyboard.sKey.isPressed) y -= 1f;
 
         moveInput = new Vector2(x, y).normalized;
+
+        // --- ANIMATION TRIGGERS ---
+        if (anim != null)
+        {
+            bool isMoving = moveInput.sqrMagnitude > 0.01f;
+
+            // 1. Trigger Walk / Stand
+            anim.SetBool("isWalking", isMoving);
+
+            // 2. Press Z to toggle Sleep
+            if (keyboard.zKey.wasPressedThisFrame)
+            {
+                bool currentlySleeping = anim.GetBool("isSleeping");
+                anim.SetBool("isSleeping", !currentlySleeping);
+            }
+
+            // 3. Automatically wake up if the player starts walking or jumps
+            if (isMoving || keyboard.spaceKey.wasPressedThisFrame)
+            {
+                anim.SetBool("isSleeping", false);
+            }
+        }
 
         if (keyboard.spaceKey.wasPressedThisFrame)
         {
@@ -103,6 +134,17 @@ public class TestPlayerMovement : MonoBehaviour
             moveDirection, 1f
         );
 
+        // Rotate the character to face the movement direction
+        if (moveDirection.sqrMagnitude > 0.01f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+            transform.rotation = Quaternion.Slerp(
+                transform.rotation,
+                targetRotation,
+                turnSpeed * Time.fixedDeltaTime
+            );
+        }
+
         float speed = grounded
             ? moveSpeed
             : moveSpeed * airControl;
@@ -122,8 +164,6 @@ public class TestPlayerMovement : MonoBehaviour
             lastJumpPressedTime = -100f;
             lastGroundedTime = -100f;
 
-            // Prevent immediate ground re-detection
-            // while the character starts moving upward.
             jumpLockoutUntil = Time.time + 0.15f;
 
             Debug.Log("Player jumped!");
@@ -139,8 +179,6 @@ public class TestPlayerMovement : MonoBehaviour
         float distance =
             bounds.extents.y + groundCheckDistance;
 
-        // Check downward for walkable surfaces.
-        // Ignore the player's own colliders and triggers.
         RaycastHit[] hits = Physics.RaycastAll(
             bounds.center,
             Vector3.down,
