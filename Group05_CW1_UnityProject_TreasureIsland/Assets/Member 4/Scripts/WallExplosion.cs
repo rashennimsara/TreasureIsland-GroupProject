@@ -21,11 +21,19 @@ public class WallExplosion : MonoBehaviour
         }
     }
 
+    // Called by the UI Slider
+    public void SetExplosionForce(float value)
+    {
+        explosionForce = value;
+        Debug.Log("Explosion Force: " + explosionForce);
+    }
+
+    // Called by CaveTrigger when the player presses E
     public void Explode()
     {
         if (exploded) return;
 
-        if (stones.Length == 0)
+        if (stones == null || stones.Length == 0)
         {
             Debug.LogWarning("No stone Rigidbodies found!");
             return;
@@ -73,6 +81,8 @@ public class WallExplosion : MonoBehaviour
             );
         }
 
-        Debug.Log("Wall pieces scattered: " + stones.Length);
+        Debug.Log(
+            "Wall pieces scattered: " + stones.Length
+        );
     }
 }
